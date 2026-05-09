@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S.M.A.R.T. INDUSTRIAL</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --bg-industrial: #0a0a0a;
+            --panel-bg: #141414;
+            --text-main: #e0e0e0;
+            --industrial-amber: #ffb100;
+            --industrial-blue: #00a8ff;
+            --border-color: #333;
+            --danger-red: #ff4d4d;
+            --success-green: #00b894;
+        }
+
+        body, html { height: 100%; font-family: 'Roboto Mono', monospace; background-color: var(--bg-industrial); color: var(--text-main); margin: 0; }
+
+        /* LOGIN */
+        #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-industrial); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; }
+        .login-box { width: 320px; background: var(--panel-bg); border: 2px solid var(--industrial-amber); padding: 40px 20px; text-align: center; position: relative; }
+        .login-input { width: 100%; padding: 15px; margin-bottom: 15px; background: #000; border: 1px solid #444; color: var(--industrial-amber); font-family: inherit; box-sizing: border-box; }
+        .btn-action { width: 100%; padding: 18px; background: var(--industrial-amber); border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; color: #000; font-family: inherit; margin-bottom: 10px; }
+        
+        .admin-setup-trigger { position: absolute; top: 10px; right: 10px; background: none; border: none; color: #444; cursor: pointer; font-size: 1.2rem; }
+
+        /* ESTRUCTURA */
+        #main-app { display: none; }
+        .container { padding: 20px; max-width: 900px; margin: auto; padding-bottom: 100px; }
+        .tabs-nav { display: flex; background: #000; border-bottom: 2px solid var(--border-color); position: sticky; top: 0; z-index: 1000; }
+        .tab-btn { flex: 1; padding: 18px 5px; background: none; border: none; color: #666; font-family: inherit; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.75rem; }
+        .tab-btn.active { color: var(--industrial-amber); border-bottom: 3px solid var(--industrial-amber); }
+        .view { display: none; }
+        .view.active { display: block; }
+
+        .admin-form { background: #1a1a1a; padding: 15px; border: 1px solid var(--industrial-amber); margin-bottom: 20px; display: none; border-radius: 4px; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-size: 0.65rem; color: #888; margin-bottom: 5px; text-transform: uppercase; }
+        .form-control { width: 100%; padding: 10px; background: #000; border: 1px solid #444; color: #fff; font-family: inherit; box-sizing: border-box; }
+
+        /* TARJETAS */
+        .card { background: var(--panel-bg); border: 1px solid var(--border-color); padding: 15px; margin-bottom: 12px; border-radius: 4px; position: relative; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .details-pane { display: none; margin-top: 15px; border-top: 1px solid #333; padding-top: 15px; }
+        
+        .qr-box { background: white; padding: 10px; display: inline-block; margin-top: 10px; border-radius: 4px; }
+        .btn-delete { background: var(--danger-red); color: white; border: none; padding: 8px; font-size: 0.6rem; cursor: pointer; text-transform: uppercase; margin-top: 15px; width: 100%; }
+
+        #map { height: 250px; width: 100%; border: 1px solid var(--border-color); margin-top: 20px; margin-bottom: 20px; }
+        .client-list-item { padding: 10px; border-bottom: 1px solid #222; font-size: 0.8rem; display: flex; justify-content: space-between; align-items: center; }
+
+        /* ESCANER REAL */
+        #reader { width: 100%; max-width: 400px; margin: 0 auto 20px; display: none; border: 2px solid var(--industrial-amber); }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen">
+        <div class="login-box">
+            <button class="admin-setup-trigger" onclick="toggleForm('setup-admin')">⚙️</button>
+            <h1>S.M.A.R.T. INDUSTRIAL</h1>
+            <div id="setup-admin" class="admin-form" style="text-align: left; margin-top: 10px;">
+                <input type="text" id="new-admin-user" class="login-input" placeholder="USUARIO ADMIN">
+                <input type="password" id="new-admin-pass" class="login-input" placeholder="NUEVA CONTRASEÑA">
+                <input type="password" id="confirm-admin-pass" class="login-input" placeholder="CONFIRMAR CONTRASEÑA">
+                <button class="btn-action" style="font-size: 0.7rem;" onclick="saveAdmin()">GUARDAR</button>
+            </div>
+            <div id="login-form">
+                <input type="text" id="user-input" class="login-input" placeholder="USUARIO">
+                <input type="password" id="pass-input" class="login-input" placeholder="CONTRASEÑA">
+                <button class="btn-action" onclick="login()">ENTRAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-app">
+        <nav class="tabs-nav">
+            <button class="tab-btn active" id="tab-dash" onclick="openMainTab(event, 'dashboard')">Inicio</button>
+            <button class="tab-btn" id="tab-flota" onclick="openMainTab(event, 'maquinas')">Flota</button>
+            <button class="tab-btn" id="tab-pers" onclick="openMainTab(event, 'operadores')">Personal</button>
+        </nav>
+
+        <div class="container">
+            <div id="dashboard" class="view active">
+                <button class="btn-action" id="btn-scan" onclick="startScanner()" style="margin-bottom: 25px;">📷 ESCANEAR QR</button>
+                <div id="reader"></div>
+                
+                <button class="btn-action" onclick="toggleForm('form-empresa')" style="border: 1px solid var(--industrial-amber); background: transparent; color: var(--industrial-amber); margin-bottom: 15px;">+ AGREGAR EMPRESA / CLIENTE</button>
+                <div id="form-empresa" class="admin-form">
+                    <div class="form-group"><label>NOMBRE DE LA EMPRESA</label><input type="text" id="nombre-empresa" class="form-control" placeholder="Ej: Maderas del Cantábrico"></div>
+                    <button class="btn-action" style="font-size: 0.7rem;" onclick="agregarEmpresa()">REGISTRAR EMPRESA</button>
+                </div>
+                <div class="card" id="lista-empresas-card">
+                    <label style="font-size: 0.65rem; color: #888;">CLIENTES ACTIVOS:</label>
+                    <div id="lista-empresas-container" style="margin-top: 10px;"></div>
+                </div>
+                <div id="map"></div>
+                <button class="btn-action" style="background: transparent; border: 1px solid #444; color: #666; margin-top: 30px; font-size: 0.7rem;" onclick="logout()">CERRAR SESIÓN / AJUSTES</button>
+            </div>
+
+            <div id="maquinas" class="view">
+                <button class="btn-action" onclick="toggleForm('form-flota')" style="margin-bottom: 20px;">+ AGREGAR UNIDAD / FLOTA</button>
+                <div id="form-flota" class="admin-form">
+                    <div class="form-group"><label>IDENTIFICADOR (ID)</label><input type="text" id="id-maquina" class="form-control" placeholder="Ej: MAQ-01"></div>
+                    <div class="form-group"><label>MODELO / VEHÍCULO</label><input type="text" id="modelo-maquina" class="form-control" placeholder="Ej: PONSSE SCORPION"></div>
+                    <button class="btn-action" onclick="agregarMaquina()">GUARDAR UNIDAD</button>
+                </div>
+                <div id="lista-maquinas-container"></div>
+            </div>
+
+            <div id="operadores" class="view">
+                <button class="btn-action" onclick="abrirFormPersonal()" style="margin-bottom: 20px;">+ AGREGAR PERSONAL</button>
+                <div id="form-personal" class="admin-form">
+                    <div class="form-group"><label>NOMBRE COMPLETO</label><input type="text" id="nom-personal" class="form-control" placeholder="Ej: Juan Pérez"></div>
+                    <div class="form-group"><label>CARGO / ROL</label><input type="text" id="rol-personal" class="form-control" placeholder="Ej: Operador de Grúa"></div>
+                    <div class="form-group">
+                        <label>ASIGNAR VEHÍCULO</label>
+                        <select id="select-maquina-personal" class="form-control"></select>
+                    </div>
+                    <button class="btn-action" onclick="agregarPersonal()">GUARDAR OPERARIO</button>
+                </div>
+                <div id="lista-personal-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    
+    <script>
+        var mainMap;
+        var html5QrCode;
+
+        function login() { 
+            const userIn = document.getElementById('user-input').value;
+            const passIn = document.getElementById('pass-input').value;
+            const adminUser = localStorage.getItem('adminUser') || 'admin';
+            const adminPass = localStorage.getItem('adminPass') || '1234';
+            if(userIn === adminUser && passIn === adminPass) {
+                document.getElementById('login-screen').style.display = 'none'; 
+                document.getElementById('main-app').style.display = 'block'; 
+                cargarMaquinas(); cargarEmpresas(); cargarPersonal();
+                setTimeout(initMaps, 100); 
+            }
+        }
+
+        /* FUNCIÓN ESCÁNER REAL */
+        function startScanner() {
+            const readerElem = document.getElementById('reader');
+            readerElem.style.display = 'block';
+            html5QrCode = new Html5Qrcode("reader");
+            
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+            
+            html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
+                // Al detectar un código
+                html5QrCode.stop().then(() => {
+                    readerElem.style.display = 'none';
+                    alert("Unidad detectada: " + decodedText);
+                    // Ir a la pestaña flota y filtrar (simulado con scroll)
+                    document.getElementById('tab-flota').click();
+                });
+            }).catch((err) => { alert("Error de cámara: " + err); });
+        }
+
+        /* GESTIÓN FLOTA */
+        function agregarMaquina() {
+            const id = document.getElementById('id-maquina').value;
+            const modelo = document.getElementById('modelo-maquina').value;
+            if(!id || !modelo) return;
+            let flota = JSON.parse(localStorage.getItem('flota') || '[]');
+            flota.push({ id, modelo, fecha: new Date().toLocaleDateString() });
+            localStorage.setItem('flota', JSON.stringify(flota));
+            document.getElementById('id-maquina').value = '';
+            document.getElementById('modelo-maquina').value = '';
+            toggleForm('form-flota'); cargarMaquinas();
+        }
+
+        function cargarMaquinas() {
+            const container = document.getElementById('lista-maquinas-container');
+            let flota = JSON.parse(localStorage.getItem('flota') || '[]');
+            container.innerHTML = flota.length ? '' : '<p style="color:#444;text-align:center;">Flota vacía.</p>';
+            flota.forEach((maq, index) => {
+                const card = document.createElement('div'); card.className = 'card';
+                card.innerHTML = `<div class="card-header" onclick="toggleExpand(this)"><div><h2 style="margin:0; font-size: 1rem; color: var(--industrial-amber);">${maq.id} | ${maq.modelo}</h2><span style="font-size: 0.7rem; color: #888;">Alta: ${maq.fecha}</span></div></div><div class="details-pane"><div style="text-align:center;"><div class="qr-box" id="qr-${index}"></div></div><button class="btn-delete" onclick="eliminarMaquina(${index})">ELIMINAR UNIDAD</button></div>`;
+                container.appendChild(card);
+                new QRCode(document.getElementById(`qr-${index}`), { text: maq.id, width: 120, height: 120 });
+            });
+        }
+
+        function eliminarMaquina(index) {
+            if(confirm("¿Eliminar esta unidad?")) {
+                let flota = JSON.parse(localStorage.getItem('flota') || '[]');
+                flota.splice(index, 1);
+                localStorage.setItem('flota', JSON.stringify(flota));
+                cargarMaquinas();
+            }
+        }
+
+        /* GESTIÓN PERSONAL */
+        function abrirFormPersonal() {
+            const select = document.getElementById('select-maquina-personal');
+            let flota = JSON.parse(localStorage.getItem('flota') || '[]');
+            select.innerHTML = '<option value="Ninguno">Sin vehículo asignado</option>';
+            flota.forEach(m => { select.innerHTML += `<option value="${m.id}">${m.id} - ${m.modelo}</option>`; });
+            toggleForm('form-personal');
+        }
+
+        function agregarPersonal() {
+            const nombre = document.getElementById('nom-personal').value;
+            const rol = document.getElementById('rol-personal').value;
+            const maq = document.getElementById('select-maquina-personal').value;
+            if(!nombre || !rol) return;
+            let equipo = JSON.parse(localStorage.getItem('personal') || '[]');
+            equipo.push({ nombre, rol, maq });
+            localStorage.setItem('personal', JSON.stringify(equipo));
+            document.getElementById('nom-personal').value = '';
+            document.getElementById('rol-personal').value = '';
+            toggleForm('form-personal'); cargarPersonal();
+        }
+
+        function cargarPersonal() {
+            const container = document.getElementById('lista-personal-container');
+            let equipo = JSON.parse(localStorage.getItem('personal') || '[]');
+            container.innerHTML = equipo.length ? '' : '<p style="color:#444;text-align:center;">No hay personal registrado.</p>';
+            equipo.forEach((p, index) => {
+                const card = document.createElement('div'); card.className = 'card';
+                card.innerHTML = `<div class="card-header"><div><h2 style="margin:0; font-size: 1rem; color: var(--industrial-blue);">${p.nombre}</h2><span style="font-size: 0.7rem; color: #888;">${p.rol}</span><div style="font-size: 0.6rem; color: var(--industrial-amber); margin-top:5px;">ASIGNADO: ${p.maq}</div></div><button class="btn-delete" style="width:auto; margin-top:0; padding:5px 10px;" onclick="eliminarPersonal(${index})">X</button></div>`;
+                container.appendChild(card);
+            });
+        }
+
+        function eliminarPersonal(index) {
+            if(confirm("¿Eliminar a este operario?")) {
+                let equipo = JSON.parse(localStorage.getItem('personal') || '[]');
+                equipo.splice(index, 1);
+                localStorage.setItem('personal', JSON.stringify(equipo));
+                cargarPersonal();
+            }
+        }
+
+        /* EMPRESAS */
+        function agregarEmpresa() {
+            const nombre = document.getElementById('nombre-empresa').value;
+            if(!nombre) return;
+            let empresas = JSON.parse(localStorage.getItem('empresas') || '[]');
+            empresas.push(nombre); localStorage.setItem('empresas', JSON.stringify(empresas));
+            document.getElementById('nombre-empresa').value = ''; toggleForm('form-empresa'); cargarEmpresas();
+        }
+        function cargarEmpresas() {
+            const container = document.getElementById('lista-empresas-container');
+            let empresas = JSON.parse(localStorage.getItem('empresas') || '[]');
+            container.innerHTML = empresas.length ? '' : '<span style="color:#444; font-size:0.7rem;">No hay empresas registradas.</span>';
+            empresas.forEach(emp => {
+                const div = document.createElement('div'); div.className = 'client-list-item';
+                div.innerHTML = `<span>${emp}</span><span style="color:var(--success-green);">● ACTIVO</span>`;
+                container.appendChild(div);
+            });
+        }
+
+        /* UTILIDADES */
+        function saveAdmin() {
+            const u = document.getElementById('new-admin-user').value;
+            const p = document.getElementById('new-admin-pass').value;
+            if(u && p) { localStorage.setItem('adminUser', u); localStorage.setItem('adminPass', p); alert("Guardado."); toggleForm('setup-admin'); }
+        }
+        function logout() { location.reload(); }
+        function toggleExpand(header) { const d = header.nextElementSibling; d.style.display = d.style.display === 'block' ? 'none' : 'block'; }
+        function toggleForm(id) { const f = document.getElementById(id); f.style.display = f.style.display === 'block' ? 'none' : 'block'; }
+        function openMainTab(evt, name) {
+            var i, v, t;
+            v = document.getElementsByClassName("view"); for (i = 0; i < v.length; i++) v[i].style.display = "none";
+            t = document.getElementsByClassName("tab-btn"); for (i = 0; i < t.length; i++) t[i].classList.remove("active");
+            document.getElementById(name).style.display = "block"; evt.currentTarget.classList.add("active");
+            if(name === 'dashboard' && mainMap) setTimeout(() => mainMap.invalidateSize(), 100);
+        }
+        function initMaps() {
+            if (!mainMap) {
+                mainMap = L.map('map').setView([43.36, -5.84], 12);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(mainMap);
+            }
+        }
+    </script>
+</body>
+</html>

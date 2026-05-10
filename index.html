@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S.M.A.R.T. INDUSTRIAL</title>
+    <link rel="manifest" href="manifest.json">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root { --bg-industrial: #0a0a0a; --panel-bg: #141414; --text-main: #e0e0e0; --industrial-amber: #ffb100; --industrial-blue: #00a8ff; --border-color: #333; --danger-red: #ff4d4d; --success-green: #00b894; }
+        body, html { height: 100%; font-family: 'Roboto Mono', monospace; background-color: var(--bg-industrial); color: var(--text-main); margin: 0; overflow-x: hidden; }
+        .container { padding: 20px; max-width: 900px; margin: auto; padding-bottom: 100px; }
+        .tabs-nav { display: flex; background: #000; border-bottom: 2px solid var(--border-color); position: sticky; top: 0; z-index: 1000; }
+        .tab-btn { flex: 1; padding: 18px 5px; background: none; border: none; color: #666; font-family: inherit; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.75rem; }
+        .tab-btn.active { color: var(--industrial-amber); border-bottom: 3px solid var(--industrial-amber); }
+        .view { display: none; }
+        .view.active { display: block; }
+        .card { background: var(--panel-bg); border: 1px solid var(--border-color); padding: 15px; margin-bottom: 12px; border-radius: 4px; }
+        .btn-action { width: 100%; padding: 18px; background: var(--industrial-amber); border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; color: #000; font-family: inherit; margin-bottom: 10px; }
+        #reader { width: 100%; max-width: 400px; margin: 0 auto 20px; display: none; border: 2px solid var(--industrial-amber); }
+        .admin-form { background: #1a1a1a; padding: 15px; border: 1px solid var(--industrial-amber); margin-bottom: 20px; display: none; }
+        .form-control { width: 100%; padding: 10px; background: #000; border: 1px solid #444; color: #fff; box-sizing: border-box; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="main-app">
+        <nav class="tabs-nav">
+            <button class="tab-btn active" onclick="openTab('dashboard')">Inicio</button>
+            <button class="tab-btn" onclick="openTab('maquinas')">Flota</button>
+            <button class="tab-btn" onclick="openTab('operadores')">Personal</button>
+        </nav>
+
+        <div class="container">
+            <div id="dashboard" class="view active">
+                <button class="btn-action" onclick="startScanner()">📷 ESCANEAR QR</button>
+                <div id="reader"></div>
+                <div class="card">
+                    <h3>ESTADO DEL SISTEMA</h3>
+                    <p id="sync-status" style="color: var(--success-green);">● CONECTADO A LA NUBE</p>
+                </div>
+            </div>
+
+            <div id="maquinas" class="view">
+                <button class="btn-action" onclick="toggleElement('form-flota')">+ AGREGAR VEHÍCULO</button>
+                <div id="form-flota" class="admin-form">
+                    <input type="text" id="id-maq" class="form-control" placeholder="ID (Ej: NV200-01)">
+                    <input type="text" id="mod-maq" class="form-control" placeholder="Modelo">
+                    <button class="btn-action" onclick="addMachine()">GUARDAR</button>
+                </div>
+                <div id="lista-maquinas"></div>
+            </div>
+
+            <div id="operadores" class="view">
+                <div id="lista-personal"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FIREBASE SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBHOQe6J4bXbsqF_9v8xz41PJs1u9Zgyh8",
+            authDomain: "smart-machine-b7054.firebaseapp.com",
+            projectId: "smart-machine-b7054",
+            storageBucket: "smart-machine-b7054.firebasestorage.app",
+            messagingSenderId: "147783686040",
+            appId: "1:147783686040:web:2d60987de05f513b31fded"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // PERSISTENCIA OFFLINE (Para el monte sin internet)
+        enableIndexedDbPersistence(db).catch((err) => {
+            console.error("Error persistencia:", err.code);
+        });
+
+        // FUNCIONES GLOBALES
+        window.addMachine = async () => {
+            const id = document.getElementById('id-maq').value;
+            const modelo = document.getElementById('mod-maq').value;
+            if(id && modelo) {
+                await addDoc(collection(db, "flota"), { id, modelo, fecha: new Date() });
+                document.getElementById('id-maq').value = '';
+                toggleElement('form-flota');
+            }
+        };
+
+        // ESCUCHAR CAMBIOS EN TIEMPO REAL (Sincronización)
+        onSnapshot(collection(db, "flota"), (snapshot) => {
+            const container = document.getElementById('lista-maquinas');
+            container.innerHTML = '';
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                container.innerHTML += `<div class="card"><strong>${data.id}</strong><br>${data.modelo}</div>`;
+            });
+        });
+
+        // REGISTRO DE SERVICE WORKER PARA MODO OFFLINE
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js');
+        }
+    </script>
+
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script>
+        function openTab(name) {
+            document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
+            document.getElementById(name).style.display = 'block';
+        }
+        function toggleElement(id) {
+            const el = document.getElementById(id);
+            el.style.display = el.style.display === 'block' ? 'none' : 'block';
+        }
+        function startScanner() {
+            const reader = document.getElementById('reader');
+            reader.style.display = 'block';
+            const html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
+                alert("Escaneado: " + text);
+                html5QrCode.stop();
+                reader.style.display = 'none';
+            });
+        }
+    </script>
+</body>
+</html>

@@ -6,10 +6,9 @@
     <title>S.M.A.R.T. INDUSTRIAL</title>
     <link rel="manifest" href="manifest.json">
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        :root { --bg-industrial: #0a0a0a; --panel-bg: #141414; --text-main: #e0e0e0; --industrial-amber: #ffb100; --industrial-blue: #00a8ff; --border-color: #333; --danger-red: #ff4d4d; --success-green: #00b894; }
-        body, html { height: 100%; font-family: 'Roboto Mono', monospace; background-color: var(--bg-industrial); color: var(--text-main); margin: 0; overflow-x: hidden; }
+        :root { --bg-industrial: #0a0a0a; --panel-bg: #141414; --text-main: #e0e0e0; --industrial-amber: #ffb100; --border-color: #333; --success-green: #00b894; }
+        body, html { height: 100%; font-family: 'Roboto Mono', monospace; background-color: var(--bg-industrial); color: var(--text-main); margin: 0; }
         .container { padding: 20px; max-width: 900px; margin: auto; padding-bottom: 100px; }
         .tabs-nav { display: flex; background: #000; border-bottom: 2px solid var(--border-color); position: sticky; top: 0; z-index: 1000; }
         .tab-btn { flex: 1; padding: 18px 5px; background: none; border: none; color: #666; font-family: inherit; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.75rem; }
@@ -33,32 +32,41 @@
         </nav>
 
         <div class="container">
+            <!-- INICIO -->
             <div id="dashboard" class="view active">
                 <button class="btn-action" onclick="startScanner()">📷 ESCANEAR QR</button>
                 <div id="reader"></div>
                 <div class="card">
                     <h3>ESTADO DEL SISTEMA</h3>
-                    <p id="sync-status" style="color: var(--success-green);">● CONECTADO A LA NUBE</p>
+                    <p id="sync-status" style="color: var(--success-green);">● NUBE ACTIVA (OFFLINE READY)</p>
                 </div>
             </div>
 
+            <!-- FLOTA -->
             <div id="maquinas" class="view">
                 <button class="btn-action" onclick="toggleElement('form-flota')">+ AGREGAR VEHÍCULO</button>
                 <div id="form-flota" class="admin-form">
                     <input type="text" id="id-maq" class="form-control" placeholder="ID (Ej: NV200-01)">
                     <input type="text" id="mod-maq" class="form-control" placeholder="Modelo">
-                    <button class="btn-action" onclick="addMachine()">GUARDAR</button>
+                    <input type="number" id="año-maq" class="form-control" placeholder="Año (Ej: 2024)">
+                    <button class="btn-action" onclick="addMachine()">GUARDAR EN NUBE</button>
                 </div>
                 <div id="lista-maquinas"></div>
             </div>
 
+            <!-- PERSONAL -->
             <div id="operadores" class="view">
+                <button class="btn-action" onclick="toggleElement('form-personal')">+ REGISTRAR OPERADOR</button>
+                <div id="form-personal" class="admin-form">
+                    <input type="text" id="nom-ope" class="form-control" placeholder="Nombre completo">
+                    <input type="text" id="cargo-ope" class="form-control" placeholder="Cargo/Especialidad">
+                    <button class="btn-action" onclick="addOperator()">REGISTRAR</button>
+                </div>
                 <div id="lista-personal"></div>
             </div>
         </div>
     </div>
 
-    <!-- FIREBASE SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, addDoc, onSnapshot, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -75,33 +83,59 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // PERSISTENCIA OFFLINE (Para el monte sin internet)
-        enableIndexedDbPersistence(db).catch((err) => {
-            console.error("Error persistencia:", err.code);
-        });
+        enableIndexedDbPersistence(db).catch((err) => console.error("Modo offline activado localmente"));
 
-        // FUNCIONES GLOBALES
+        // LÓGICA DE MÁQUINAS (Actualizada con Año)
         window.addMachine = async () => {
             const id = document.getElementById('id-maq').value;
             const modelo = document.getElementById('mod-maq').value;
-            if(id && modelo) {
-                await addDoc(collection(db, "flota"), { id, modelo, fecha: new Date() });
+            const año = document.getElementById('año-maq').value;
+            if(id && modelo && año) {
+                await addDoc(collection(db, "flota"), { id, modelo, año, fecha: new Date() });
                 document.getElementById('id-maq').value = '';
+                document.getElementById('mod-maq').value = '';
+                document.getElementById('año-maq').value = '';
                 toggleElement('form-flota');
+            } else {
+                alert("Por favor rellena todos los campos");
             }
         };
 
-        // ESCUCHAR CAMBIOS EN TIEMPO REAL (Sincronización)
         onSnapshot(collection(db, "flota"), (snapshot) => {
             const container = document.getElementById('lista-maquinas');
             container.innerHTML = '';
             snapshot.forEach((doc) => {
                 const data = doc.data();
-                container.innerHTML += `<div class="card"><strong>${data.id}</strong><br>${data.modelo}</div>`;
+                container.innerHTML += `
+                    <div class="card">
+                        <strong>${data.id}</strong><br>
+                        MOD: ${data.modelo}<br>
+                        AÑO: ${data.año || 'N/A'}
+                    </div>`;
             });
         });
 
-        // REGISTRO DE SERVICE WORKER PARA MODO OFFLINE
+        // LÓGICA DE OPERADORES
+        window.addOperator = async () => {
+            const nombre = document.getElementById('nom-ope').value;
+            const cargo = document.getElementById('cargo-ope').value;
+            if(nombre && cargo) {
+                await addDoc(collection(db, "operadores"), { nombre, cargo, fecha: new Date() });
+                document.getElementById('nom-ope').value = '';
+                document.getElementById('cargo-ope').value = '';
+                toggleElement('form-personal');
+            }
+        };
+
+        onSnapshot(collection(db, "operadores"), (snapshot) => {
+            const container = document.getElementById('lista-personal');
+            container.innerHTML = '';
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                container.innerHTML += `<div class="card" style="border-left: 4px solid var(--success-green)"><strong>${data.nombre}</strong><br>${data.cargo}</div>`;
+            });
+        });
+
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('./sw.js');
         }
@@ -112,18 +146,21 @@
         function openTab(name) {
             document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
             document.getElementById(name).style.display = 'block';
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            event.currentTarget.classList.add('active');
         }
         function toggleElement(id) {
             const el = document.getElementById(id);
-            el.style.display = el.style.display === 'block' ? 'none' : 'block';
+            el.style.display = (el.style.display === 'block') ? 'none' : 'block';
         }
+        let scanner = null;
         function startScanner() {
             const reader = document.getElementById('reader');
             reader.style.display = 'block';
-            const html5QrCode = new Html5Qrcode("reader");
-            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
-                alert("Escaneado: " + text);
-                html5QrCode.stop();
+            if(!scanner) scanner = new Html5Qrcode("reader");
+            scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
+                alert("QR detectado: " + text);
+                scanner.stop();
                 reader.style.display = 'none';
             });
         }

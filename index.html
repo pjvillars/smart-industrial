@@ -7,9 +7,9 @@
     <link rel="manifest" href="manifest.json">
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        :root { --bg-industrial: #0a0a0a; --panel-bg: #141414; --text-main: #e0e0e0; --industrial-amber: #ffb100; --border-color: #333; }
+        :root { --bg-industrial: #0a0a0a; --panel-bg: #141414; --text-main: #e0e0e0; --industrial-amber: #ffb100; --border-color: #333; --success-green: #00b894; }
         body, html { height: 100%; font-family: 'Roboto Mono', monospace; background-color: var(--bg-industrial); color: var(--text-main); margin: 0; }
-        .container { padding: 20px; max-width: 900px; margin: auto; }
+        .container { padding: 20px; max-width: 900px; margin: auto; padding-bottom: 50px; }
         .tabs-nav { display: flex; background: #000; border-bottom: 2px solid var(--border-color); position: sticky; top: 0; z-index: 1000; }
         .tab-btn { flex: 1; padding: 18px 5px; background: none; border: none; color: #666; font-family: inherit; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.75rem; }
         .tab-btn.active { color: var(--industrial-amber); border-bottom: 3px solid var(--industrial-amber); }
@@ -18,7 +18,8 @@
         .card { background: var(--panel-bg); border: 1px solid var(--border-color); padding: 15px; margin-bottom: 12px; border-radius: 4px; }
         .btn-action { width: 100%; padding: 18px; background: var(--industrial-amber); border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; color: #000; font-family: inherit; margin-bottom: 10px; }
         .form-control { width: 100%; padding: 12px; background: #000; border: 1px solid #444; color: #fff; box-sizing: border-box; margin-bottom: 10px; font-family: inherit; }
-        select.form-control { color: var(--industrial-amber); font-weight: bold; }
+        .admin-form { background: #1a1a1a; padding: 15px; border: 1px solid var(--industrial-amber); margin-bottom: 20px; display: none; }
+        #reader { width: 100%; max-width: 400px; margin: 0 auto 20px; display: none; border: 2px solid var(--industrial-amber); }
     </style>
 </head>
 <body>
@@ -30,51 +31,51 @@
     </nav>
 
     <div class="container">
-        <!-- PANTALLA DE INICIO (DASHBOARD) -->
+        <!-- INICIO -->
         <div id="dashboard" class="view active">
             <div class="card">
                 <h3>SELECCIÓN DE EMPRESA</h3>
                 <select id="select-empresa" class="form-control" onchange="seleccionarEmpresa()">
                     <option value="">-- Seleccionar Empresa --</option>
                 </select>
-                
-                <div id="nueva-empresa-box" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 15px;">
-                    <input type="text" id="nombre-empresa" class="form-control" placeholder="Nombre de nueva empresa">
-                    <button class="btn-action" style="padding: 10px; font-size: 0.7rem;" onclick="guardarEmpresa()">+ AGREGAR EMPRESA</button>
+                <div style="margin-top: 10px; display: flex; gap: 5px;">
+                    <input type="text" id="nombre-empresa" class="form-control" placeholder="Nueva empresa" style="margin-bottom:0">
+                    <button class="btn-action" style="width: auto; padding: 10px;" onclick="guardarEmpresa()">+</button>
                 </div>
             </div>
-
+            
             <button class="btn-action" onclick="startScanner()">📷 ESCANEAR QR</button>
             <div id="reader"></div>
             
             <div class="card">
-                <h3>ESTADO</h3>
-                <p id="empresa-actual">Empresa: Ninguna seleccionada</p>
-                <p id="sync-status" style="color: #00b894;">● SISTEMA SINCRONIZADO</p>
+                <p id="empresa-actual" style="color: var(--industrial-amber);">Empresa: No seleccionada</p>
+                <p id="sync-status" style="color: var(--success-green);">● SISTEMA ONLINE</p>
             </div>
         </div>
 
-        <!-- FLOTA -->
+        <!-- FLOTA (Restaurado el diseño original) -->
         <div id="maquinas" class="view">
-            <div class="card">
-                <h3>GESTIÓN DE FLOTA</h3>
-                <div id="lista-maquinas"></div>
+            <button class="btn-action" onclick="toggleElement('form-flota')">+ AGREGAR VEHÍCULO</button>
+            
+            <div id="form-flota" class="admin-form">
+                <input type="text" id="id-maq" class="form-control" placeholder="ID (Ej: NV200-01)">
+                <input type="text" id="mod-maq" class="form-control" placeholder="Modelo / Descripción">
+                <button class="btn-action" onclick="addMachine()">GUARDAR EN FLOTA</button>
             </div>
+
+            <div id="lista-maquinas"></div>
         </div>
 
         <!-- PERSONAL -->
         <div id="operadores" class="view">
-            <div class="card">
-                <h3>PERSONAL ACTIVO</h3>
-                <div id="lista-personal"></div>
-            </div>
+            <div class="card"><h3>LISTADO DE PERSONAL</h3></div>
+            <div id="lista-personal"></div>
         </div>
     </div>
 
-    <!-- SDK DE FIREBASE -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, enableIndexedDbPersistence, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBHOQe6J4bXbsqF_9v8xz41PJs1u9Zgyh8",
@@ -88,44 +89,83 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        enableIndexedDbPersistence(db).catch((err) => console.error(err));
+        enableIndexedDbPersistence(db).catch((err) => console.log("Modo offline activado"));
 
-        // GUARDAR EMPRESA EN FIREBASE
+        // EMPRESAS
         window.guardarEmpresa = async () => {
-            const nombre = document.getElementById('nombre-empresa').value;
-            if(nombre) {
-                await addDoc(collection(db, "empresas"), { nombre: nombre.toUpperCase() });
-                document.getElementById('nombre-empresa').value = '';
-            }
+            const nom = document.getElementById('nombre-empresa').value;
+            if(nom) await addDoc(collection(db, "empresas"), { nombre: nom.toUpperCase() });
+            document.getElementById('nombre-empresa').value = '';
         };
 
-        // LEER EMPRESAS EN TIEMPO REAL
-        onSnapshot(collection(db, "empresas"), (snapshot) => {
-            const select = document.getElementById('select-empresa');
-            select.innerHTML = '<option value="">-- Seleccionar Empresa --</option>';
-            snapshot.forEach((doc) => {
-                const data = doc.data();
-                select.innerHTML += `<option value="${data.nombre}">${data.nombre}</option>`;
-            });
+        onSnapshot(collection(db, "empresas"), (snap) => {
+            const sel = document.getElementById('select-empresa');
+            sel.innerHTML = '<option value="">-- Seleccionar Empresa --</option>';
+            snap.forEach(doc => sel.innerHTML += `<option value="${doc.data().nombre}">${doc.data().nombre}</option>`);
         });
 
         window.seleccionarEmpresa = () => {
-            const seleccionada = document.getElementById('select-empresa').value;
-            document.getElementById('empresa-actual').innerText = "Empresa: " + (seleccionada || "Ninguna");
-            // Aquí se puede añadir lógica para filtrar la flota por empresa más adelante
+            const val = document.getElementById('select-empresa').value;
+            document.getElementById('empresa-actual').innerText = "Empresa: " + (val || "No seleccionada");
         };
 
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js');
-        }
+        // FLOTA (Lógica original recuperada)
+        window.addMachine = async () => {
+            const id = document.getElementById('id-maq').value;
+            const mod = document.getElementById('mod-maq').value;
+            const emp = document.getElementById('select-empresa').value;
+            if(id && mod) {
+                await addDoc(collection(db, "flota"), { 
+                    id, 
+                    modelo: mod, 
+                    empresa: emp || "GENERAL",
+                    fecha: new Date() 
+                });
+                document.getElementById('id-maq').value = '';
+                document.getElementById('mod-maq').value = '';
+                toggleElement('form-flota');
+            }
+        };
+
+        onSnapshot(query(collection(db, "flota"), orderBy("fecha", "desc")), (snap) => {
+            const container = document.getElementById('lista-maquinas');
+            container.innerHTML = '';
+            snap.forEach(doc => {
+                const d = doc.data();
+                container.innerHTML += `
+                    <div class="card">
+                        <span style="color:var(--industrial-amber); font-weight:bold;">${d.id}</span><br>
+                        <small>${d.modelo}</small><br>
+                        <div style="font-size:0.7rem; color:#666; margin-top:5px;">Empresa: ${d.empresa}</div>
+                    </div>`;
+            });
+        });
+
+        window.toggleElement = (id) => {
+            const el = document.getElementById(id);
+            el.style.display = el.style.display === 'block' ? 'none' : 'block';
+        };
+
+        if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js'); }
     </script>
 
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
         function openTab(name) {
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(name).classList.add('active');
             event.currentTarget.classList.add('active');
+        }
+        function startScanner() {
+            const r = document.getElementById('reader');
+            r.style.display = 'block';
+            const scanner = new Html5Qrcode("reader");
+            scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (txt) => {
+                alert("QR detectado: " + txt);
+                scanner.stop();
+                r.style.display = 'none';
+            });
         }
     </script>
 </body>
